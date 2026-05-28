@@ -1,0 +1,158 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model answers {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  content         String
+  is_correct      Boolean?          @default(false)
+  question_id     String            @db.Uuid
+  created_at      DateTime?         @default(now()) @db.Timestamp(6)
+  questions       questions         @relation(fields: [question_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  student_answers student_answers[]
+}
+
+model attempts {
+  id              String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  exam_id         String               @db.Uuid
+  student_id      String               @db.Uuid
+  started_at      DateTime?            @default(now()) @db.Timestamp(6)
+  submitted_at    DateTime?            @db.Timestamp(6)
+  status          attempt_status_enum? @default(IN_PROGRESS)
+  score           Float?               @default(0)
+  total_correct   Int?                 @default(0)
+  total_wrong     Int?                 @default(0)
+  created_at      DateTime?            @default(now()) @db.Timestamp(6)
+  exams           exams                @relation(fields: [exam_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users           users                @relation(fields: [student_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  student_answers student_answers[]
+}
+
+model exam_questions {
+  exam_id     String    @db.Uuid
+  question_id String    @db.Uuid
+  order_index Int
+  score       Float?    @default(1)
+  exams       exams     @relation(fields: [exam_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  questions   questions @relation(fields: [question_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([exam_id, question_id])
+}
+
+model exams {
+  id                       String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title                    String            @db.VarChar(255)
+  slug                     String            @unique @db.VarChar(255)
+  description              String?
+  duration                 Int
+  total_score              Float?            @default(10)
+  status                   exam_status_enum? @default(DRAFT)
+  is_public                Boolean?          @default(true)
+  access_code              String?           @db.VarChar(50)
+  start_time               DateTime?         @db.Timestamp(6)
+  end_time                 DateTime?         @db.Timestamp(6)
+  shuffle_questions        Boolean?          @default(false)
+  shuffle_answers          Boolean?          @default(false)
+  show_result_after_submit Boolean?          @default(true)
+  max_attempts             Int?              @default(1)
+  subject_id               String            @db.Uuid
+  created_by_id            String            @db.Uuid
+  created_at               DateTime?         @default(now()) @db.Timestamp(6)
+  updated_at               DateTime?         @default(now()) @db.Timestamp(6)
+  attempts                 attempts[]
+  exam_questions           exam_questions[]
+  users                    users             @relation(fields: [created_by_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subjects                 subjects          @relation(fields: [subject_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model questions {
+  id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  content         String
+  explanation     String?
+  image_url       String?
+  level           Int?                @default(1)
+  type            question_type_enum? @default(SINGLE_CHOICE)
+  subject_id      String              @db.Uuid
+  created_by_id   String              @db.Uuid
+  created_at      DateTime?           @default(now()) @db.Timestamp(6)
+  updated_at      DateTime?           @default(now()) @db.Timestamp(6)
+  answers         answers[]
+  exam_questions  exam_questions[]
+  users           users               @relation(fields: [created_by_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subjects        subjects            @relation(fields: [subject_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  student_answers student_answers[]
+}
+
+model student_answers {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  attempt_id  String    @db.Uuid
+  question_id String    @db.Uuid
+  answer_id   String    @db.Uuid
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  answers     answers   @relation(fields: [answer_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  attempts    attempts  @relation(fields: [attempt_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  questions   questions @relation(fields: [question_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model subjects {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String      @db.VarChar(255)
+  slug        String      @unique @db.VarChar(255)
+  description String?
+  created_at  DateTime?   @default(now()) @db.Timestamp(6)
+  exams       exams[]
+  questions   questions[]
+}
+
+model users {
+  id         String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  full_name  String      @db.VarChar(255)
+  email      String      @unique @db.VarChar(255)
+  password   String      @db.VarChar(255)
+  avatar     String?
+  role       role_enum   @default(STUDENT)
+  is_active  Boolean?    @default(true)
+  created_at DateTime?   @default(now()) @db.Timestamp(6)
+  updated_at DateTime?   @default(now()) @db.Timestamp(6)
+  attempts   attempts[]
+  exams      exams[]
+  questions  questions[]
+}
+
+model email_otps {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email      String    @db.VarChar(255)
+  otp        String    @db.VarChar(10)
+  expired_at DateTime  @db.Timestamp(6)
+  is_used    Boolean?  @default(false)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+}
+
+enum attempt_status_enum {
+  IN_PROGRESS
+  SUBMITTED
+  TIMEOUT
+}
+
+enum exam_status_enum {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  ARCHIVED
+}
+
+enum question_type_enum {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+}
+
+enum role_enum {
+  ADMIN
+  TEACHER
+  STUDENT
+}
