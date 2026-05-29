@@ -7,7 +7,7 @@ export class LoginDto {
   email!: string;
 
   @ApiProperty({ example: 'matkhau0107' })
-  @IsString()
+  @IsString({ message: 'Mật khẩu phải là chuỗi ký tự' })
   @MinLength(1, { message: 'Mật khẩu không được để trống' })
   password!: string;
 }

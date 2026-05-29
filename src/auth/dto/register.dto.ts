@@ -1,9 +1,19 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class RegisterDto {
   @ApiProperty({ example: 'Dương Văn Định' })
-  @IsString()
+  @IsString({ message: 'Họ và tên phải là chuỗi ký tự' })
+  @IsNotEmpty({ message: 'Họ và tên không được để trống' })
+  @MaxLength(255, { message: 'Họ và tên không được vượt quá 255 ký tự' })
   full_name!: string;
 
   @ApiProperty({ example: 'user@example.com' })
@@ -12,7 +22,8 @@ export class RegisterDto {
 
   @ApiPropertyOptional({ example: '0912345678' })
   @IsOptional()
-  @IsString()
+  @IsString({ message: 'Số điện thoại phải là chuỗi ký tự' })
+  @MaxLength(20, { message: 'Số điện thoại không được vượt quá 20 ký tự' })
   phone?: string;
 
   @ApiProperty({ example: 'matkhau0107', minLength: 6 })
@@ -25,6 +36,8 @@ export class RegisterDto {
     default: 'STUDENT',
   })
   @IsOptional()
-  @IsEnum(['ADMIN', 'TEACHER', 'STUDENT'])
+  @IsEnum(['ADMIN', 'TEACHER', 'STUDENT'], {
+    message: 'Vai trò phải là ADMIN, TEACHER hoặc STUDENT',
+  })
   role?: 'ADMIN' | 'TEACHER' | 'STUDENT';
 }

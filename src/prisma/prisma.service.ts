@@ -1,19 +1,5 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '../generated/prisma/client';
-
-function normalizeDatabaseUrl(url: string): string {
-  try {
-    const parsed = new URL(url);
-    const sslmode = parsed.searchParams.get('sslmode');
-    if (sslmode === 'require') {
-      parsed.searchParams.set('sslmode', 'verify-full');
-    }
-    return parsed.toString();
-  } catch {
-    return url;
-  }
-}
+import { PrismaClient } from '../../generated/prisma';
 
 @Injectable()
 export class PrismaService
@@ -21,16 +7,11 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   constructor() {
-    const connectionString = process.env.DATABASE_URL;
-    if (!connectionString) {
-      throw new Error('DATABASE_URL is not set');
+    if (!process.env.DATABASE_URL) {
+      throw new Error('Chưa cấu hình biến môi trường DATABASE_URL');
     }
 
-    super({
-      adapter: new PrismaPg({
-        connectionString: normalizeDatabaseUrl(connectionString),
-      }),
-    });
+    super();
   }
 
   async onModuleInit(): Promise<void> {

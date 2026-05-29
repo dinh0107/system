@@ -22,24 +22,29 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 
-@ApiTags('auth')
+@ApiTags('Xác thực')
 @Controller('auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
 
   @Post('register')
   @ApiOperation({ summary: 'Đăng ký — gửi OTP qua email' })
-  @ApiCreatedResponse({ description: 'OTP đã gửi, trả về temp_user' })
-  @ApiBadRequestResponse({ description: 'Email đã tồn tại' })
+  @ApiCreatedResponse({
+    description: 'Đã tạo tài khoản chờ xác minh và gửi mã OTP',
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Email/SĐT đã tồn tại, hoặc email đang chờ xác minh (dùng gửi lại OTP)',
+  })
   register(@Body() body: RegisterDto) {
     return this.authService.register(body);
   }
 
   @Post('verify-otp')
-  @ApiOperation({ summary: 'Xác minh OTP và tạo tài khoản' })
-  @ApiCreatedResponse({ description: 'Tài khoản đã được kích hoạt' })
+  @ApiOperation({ summary: 'Xác minh OTP — chỉ cần email và mã OTP' })
+  @ApiCreatedResponse({ description: 'Tài khoản đã được xác minh' })
   @ApiBadRequestResponse({
-    description: 'OTP sai / hết hạn — dùng resend-otp',
+    description: 'Mã OTP sai hoặc đã hết hạn',
   })
   verifyOtp(@Body() body: VerifyOtpDto) {
     return this.authService.verifyOtp(body);
@@ -64,8 +69,7 @@ export class AuthController {
       'access_token (ngắn hạn), refresh_token (dài hạn), expires_in (giây)',
   })
   @ApiBadRequestResponse({
-    description:
-      'Email chưa đăng ký / chưa verify OTP / OTP hết hạn / mật khẩu sai',
+    description: 'Email chưa đăng ký / chưa xác minh email / mật khẩu sai',
   })
   @ApiForbiddenResponse({ description: 'Tài khoản đã bị khóa' })
   login(@Body() body: LoginDto) {
@@ -74,10 +78,12 @@ export class AuthController {
 
   @Post('refresh')
   @ApiOperation({
-    summary: 'Làm mới access token bằng refresh token (rotate refresh)',
+    summary: 'Làm mới phiên đăng nhập bằng mã làm mới',
   })
-  @ApiOkResponse({ description: 'Cặp token mới' })
-  @ApiUnauthorizedResponse({ description: 'Refresh token không hợp lệ' })
+  @ApiOkResponse({ description: 'Đã cấp mã truy cập và mã làm mới mới' })
+  @ApiUnauthorizedResponse({
+    description: 'Mã làm mới phiên không hợp lệ hoặc đã hết hạn',
+  })
   @ApiForbiddenResponse({ description: 'Tài khoản bị khóa' })
   refresh(@Body() body: RefreshTokenDto) {
     return this.authService.refresh(body);

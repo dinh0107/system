@@ -5,9 +5,22 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { MailModule } from './mail/mail.module';
+import { ExamsModule } from './exams/exams.module';
+import { SubjectsModule } from './subjects/subjects.module';
+import { ClassesModule } from './classes/classes.module';
+import { QuestionsModule } from './questions/questions.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, UsersModule, MailModule],
+  imports: [
+    PrismaModule,
+    AuthModule,
+    UsersModule,
+    MailModule,
+    ExamsModule,
+    SubjectsModule,
+    ClassesModule,
+    QuestionsModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })

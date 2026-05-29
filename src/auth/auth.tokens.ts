@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'crypto';
 
 import { JwtService } from '@nestjs/jwt';
 
-import { users } from '../generated/prisma/client';
+import { users } from '../../generated/prisma';
 
 export const ACCESS_TOKEN_EXPIRES_IN =
   process.env.JWT_ACCESS_EXPIRES_IN ?? '15m';

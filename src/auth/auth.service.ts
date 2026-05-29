@@ -9,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 
 import * as bcrypt from 'bcrypt';
 
+import { Prisma } from '../../generated/prisma';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { UsersService } from '../users/users.service';
@@ -49,56 +50,59 @@ export class AuthService {
   ) {}
 
   async register(data: RegisterDto) {
-    await this.assertRegistrationAvailable(data.email, data.phone);
-    return this.issueRegistrationOtp(data);
+    const email = data.email.trim().toLowerCase();
+    await this.assertNoDuplicateAccount(email, data.phone);
+    await this.createPendingUser(data);
+    return this.issueRegistrationOtp(email);
   }
 
   async resendOtp(data: RegisterDto) {
-    await this.assertRegistrationAvailable(data.email, data.phone);
+    const email = data.email.trim().toLowerCase();
+    const user = await this.usersService.findByEmail(email);
 
-    const hasValidOtp = await this.hasValidPendingOtp(data.email);
-    if (hasValidOtp) {
+    if (!user) {
       throw new BadRequestException(
-        'OTP vẫn còn hiệu lực. Vui lòng kiểm tra email hoặc đợi hết hạn',
+        'Chưa có đăng ký chờ xác minh với email này',
       );
     }
 
-    return this.issueRegistrationOtp(data);
+    if (user.email_verified) {
+      throw new BadRequestException('Email đã được sử dụng');
+    }
+
+    await this.assertPhoneAvailableForPending(email, data.phone);
+
+    const hasValidOtp = await this.hasValidPendingOtp(email);
+    if (hasValidOtp) {
+      throw new BadRequestException(
+        'Mã OTP trước đó vẫn còn hiệu lực. Vui lòng kiểm tra email hoặc đợi hết hạn',
+      );
+    }
+
+    await this.updatePendingUser(user.id, data);
+    return this.issueRegistrationOtp(email);
   }
 
   async verifyOtp(body: VerifyOtpDto) {
-    const { email, otp, temp_user: tempUser } = body;
+    const email = body.email.trim().toLowerCase();
+    const user = await this.usersService.findByEmail(email);
 
-    if (tempUser.email !== email) {
-      throw new BadRequestException('Email không khớp với temp_user');
+    if (!user) {
+      throw new BadRequestException('Email chưa được đăng ký');
     }
 
-    await this.assertRegistrationAvailable(email, tempUser.phone);
+    if (user.email_verified) {
+      throw new BadRequestException('Email đã được xác minh');
+    }
 
-    const otpRecord = await this.prisma.email_otps.findFirst({
-      where: {
-        email,
-        otp,
-        is_used: false,
-      },
-      orderBy: {
-        created_at: 'desc',
-      },
-    });
-
+    const otpRecord = await this.findValidOtpRecord(email, body.otp);
     if (!otpRecord) {
       if (await this.hasExpiredUnusedOtp(email)) {
         throw new BadRequestException(
-          'OTP đã hết hạn. Vui lòng gửi lại OTP qua POST /auth/resend-otp',
+          'Mã OTP đã hết hạn. Vui lòng yêu cầu gửi lại mã OTP',
         );
       }
       throw new BadRequestException('Mã OTP không đúng');
-    }
-
-    if (new Date() > otpRecord.expired_at) {
-      throw new BadRequestException(
-        'OTP đã hết hạn. Vui lòng gửi lại OTP qua POST /auth/resend-otp',
-      );
     }
 
     await this.prisma.email_otps.update({
@@ -106,18 +110,13 @@ export class AuthService {
       data: { is_used: true },
     });
 
-    const user = await this.usersService.create({
-      full_name: tempUser.full_name,
-      email: tempUser.email,
-      phone: tempUser.phone,
-      password: tempUser.password,
-      role: tempUser.role || 'STUDENT',
-      is_active: true,
+    const verified = await this.usersService.update(user.id, {
+      email_verified: true,
     });
 
-    const { password: _, ...userWithoutPassword } = user;
+    const { password: _, ...userWithoutPassword } = verified;
     return {
-      message: 'Account verified successfully',
+      message: 'Xác minh tài khoản thành công',
       user: userWithoutPassword,
     };
   }
@@ -127,17 +126,13 @@ export class AuthService {
     const user = await this.usersService.findByEmail(email);
 
     if (!user) {
-      if (await this.hasValidPendingOtp(email)) {
-        throw new BadRequestException(
-          'Vui lòng xác minh OTP trước khi đăng nhập',
-        );
-      }
-      if (await this.hasExpiredUnusedOtp(email)) {
-        throw new BadRequestException(
-          'OTP đã hết hạn. Vui lòng gửi lại OTP qua POST /auth/resend-otp',
-        );
-      }
       throw new BadRequestException('Email chưa được đăng ký');
+    }
+
+    if (!user.email_verified) {
+      throw new BadRequestException(
+        'Vui lòng xác minh email trước khi đăng nhập',
+      );
     }
 
     const isMatch = await bcrypt.compare(data.password.trim(), user.password);
@@ -163,11 +158,15 @@ export class AuthService {
     const stored = await this.findValidRefreshToken(body.refresh_token);
     if (!stored) {
       throw new UnauthorizedException(
-        'Refresh token không hợp lệ hoặc đã hết hạn',
+        'Mã làm mới phiên không hợp lệ hoặc đã hết hạn',
       );
     }
 
     const user = stored.users;
+    if (!user.email_verified) {
+      throw new ForbiddenException('Vui lòng xác minh email trước khi đăng nhập');
+    }
+
     if (user.is_active === false) {
       throw new ForbiddenException('Tài khoản đã bị khóa');
     }
@@ -185,7 +184,7 @@ export class AuthService {
   async getMe(authUser: AuthUser) {
     const user = await this.usersService.findById(authUser.id);
 
-    if (!user || user.is_active === false) {
+    if (!user || user.is_active === false || !user.email_verified) {
       throw new UnauthorizedException('Phiên đăng nhập không hợp lệ');
     }
 
@@ -238,7 +237,7 @@ export class AuthService {
   async changePassword(authUser: AuthUser, data: ChangePasswordDto) {
     const user = await this.usersService.findById(authUser.id);
 
-    if (!user || user.is_active === false) {
+    if (!user || user.is_active === false || !user.email_verified) {
       throw new UnauthorizedException('Phiên đăng nhập không hợp lệ');
     }
 
@@ -310,35 +309,116 @@ export class AuthService {
     });
   }
 
-  private async assertRegistrationAvailable(email: string, phone?: string) {
-    const userExist = await this.usersService.findByEmail(email);
-    if (userExist) {
-      throw new BadRequestException('Email đã được sử dụng');
+  private async assertNoDuplicateAccount(email: string, phone?: string) {
+    const byEmail = await this.usersService.findByEmail(email);
+    if (byEmail) {
+      if (byEmail.email_verified) {
+        throw new BadRequestException('Email đã được sử dụng');
+      }
+      throw new BadRequestException(
+        'Tài khoản với email này đang chờ xác minh. Vui lòng gửi lại mã OTP',
+      );
     }
 
-    if (phone) {
-      const phoneExist = await this.usersService.findByPhone(phone);
-      if (phoneExist) {
+    if (phone?.trim()) {
+      const byPhone = await this.usersService.findByPhone(phone.trim());
+      if (byPhone) {
         throw new BadRequestException('Số điện thoại đã được sử dụng');
       }
     }
   }
 
-  private async issueRegistrationOtp(data: RegisterDto) {
-    const email = data.email?.trim().toLowerCase();
+  private async assertPhoneAvailableForPending(email: string, phone?: string) {
+    if (!phone?.trim()) {
+      return;
+    }
+
+    const phoneOwner = await this.usersService.findByPhone(phone.trim());
+    if (!phoneOwner || phoneOwner.email === email) {
+      return;
+    }
+
+    if (phoneOwner.email_verified) {
+      throw new BadRequestException('Số điện thoại đã được sử dụng');
+    }
+
+    throw new BadRequestException(
+      'Số điện thoại đang được dùng cho tài khoản chờ xác minh khác',
+    );
+  }
+
+  private async createPendingUser(data: RegisterDto) {
+    const email = data.email.trim().toLowerCase();
     const password = data.password?.trim();
 
     if (!password) {
       throw new BadRequestException('Mật khẩu không được để trống');
     }
 
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    try {
+      await this.usersService.create({
+        full_name: data.full_name.trim(),
+        email,
+        phone: data.phone?.trim() || null,
+        password: hashedPassword,
+        role: data.role || 'STUDENT',
+        email_verified: false,
+        is_active: true,
+      });
+    } catch (error) {
+      throw this.toDuplicateAccountException(error);
+    }
+  }
+
+  private async updatePendingUser(userId: string, data: RegisterDto) {
+    const password = data.password?.trim();
+
+    if (!password) {
+      throw new BadRequestException('Mật khẩu không được để trống');
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    try {
+      await this.usersService.update(userId, {
+        full_name: data.full_name.trim(),
+        phone: data.phone?.trim() || null,
+        password: hashedPassword,
+        role: data.role || 'STUDENT',
+      });
+    } catch (error) {
+      throw this.toDuplicateAccountException(error);
+    }
+  }
+
+  private toDuplicateAccountException(error: unknown): BadRequestException {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      const fields = Array.isArray(error.meta?.target)
+        ? error.meta.target.join(',')
+        : String(error.meta?.target ?? '');
+
+      if (fields.includes('phone')) {
+        return new BadRequestException('Số điện thoại đã được sử dụng');
+      }
+
+      return new BadRequestException('Email đã được sử dụng');
+    }
+
+    throw error;
+  }
+
+  private async issueRegistrationOtp(email: string) {
     await this.prisma.email_otps.updateMany({
       where: { email, is_used: false },
       data: { is_used: true },
     });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const hashedPassword = await bcrypt.hash(password, 10);
 
     await this.prisma.email_otps.create({
       data: {
@@ -351,15 +431,29 @@ export class AuthService {
     await this.mailService.sendOtp(email, otp);
 
     return {
-      message: 'OTP sent to email',
-      temp_user: {
-        full_name: data.full_name.trim(),
-        email,
-        phone: data.phone?.trim(),
-        password: hashedPassword,
-        role: data.role || 'STUDENT',
-      },
+      message:
+        'Đã gửi mã OTP đến email của bạn. Vui lòng xác minh để hoàn tất đăng ký',
+      email,
     };
+  }
+
+  private async findValidOtpRecord(email: string, otp: string) {
+    const record = await this.prisma.email_otps.findFirst({
+      where: {
+        email,
+        otp,
+        is_used: false,
+      },
+      orderBy: {
+        created_at: 'desc',
+      },
+    });
+
+    if (!record || new Date() > record.expired_at) {
+      return null;
+    }
+
+    return record;
   }
 
   private async hasValidPendingOtp(email: string): Promise<boolean> {

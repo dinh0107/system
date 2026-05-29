@@ -1,8 +1,10 @@
 import 'dotenv/config';
 import { ValidationPipe } from '@nestjs/common';
+import { HttpExceptionFilter } from './common/http-exception.filter';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { validationExceptionFactory } from './common/validation.util';
 
 function parseCorsOrigins(): string[] | boolean {
   const raw = process.env.CORS_ORIGIN?.trim();
@@ -15,11 +17,14 @@ function parseCorsOrigins(): string[] | boolean {
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  app.useGlobalFilters(new HttpExceptionFilter());
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      exceptionFactory: validationExceptionFactory,
     }),
   );
 
@@ -32,15 +37,15 @@ async function bootstrap() {
   });
 
   const config = new DocumentBuilder()
-    .setTitle('System API')
-    .setDescription('API hệ thống thi trực tuyến — Auth, OTP, đăng nhập')
+    .setTitle('API Hệ thống thi trực tuyến')
+    .setDescription('Xác thực, đăng ký OTP, đăng nhập và quản lý tài khoản')
     .setVersion('1.0')
     .addBearerAuth(
       {
         type: 'http',
         scheme: 'bearer',
         bearerFormat: 'JWT',
-        description: 'JWT từ POST /auth/login',
+        description: 'Access token nhận được sau khi đăng nhập',
       },
       'access-token',
     )
@@ -55,7 +60,7 @@ async function bootstrap() {
 
   const port = process.env.PORT ?? 3000;
   await app.listen(port, '0.0.0.0');
-  console.log(`Application: http://localhost:${port}`);
-  console.log(`Swagger UI:  http://localhost:${port}/api`);
+  console.log(`Ứng dụng: http://localhost:${port}`);
+  console.log(`Tài liệu API: http://localhost:${port}/api`);
 }
 bootstrap();

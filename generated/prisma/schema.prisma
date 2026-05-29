@@ -1,0 +1,232 @@
+generator client {
+  provider     = "prisma-client-js"
+  output       = "../generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model answers {
+  id          String    @id @default(uuid())
+  content     String
+  is_correct  Boolean?  @default(false)
+  question_id String
+  created_at  DateTime? @default(now())
+
+  questions       questions         @relation(fields: [question_id], references: [id], onDelete: Cascade)
+  student_answers student_answers[]
+}
+
+model attempts {
+  id            String               @id @default(uuid())
+  exam_id       String
+  student_id    String
+  started_at    DateTime?            @default(now())
+  submitted_at  DateTime?
+  status        attempt_status_enum? @default(IN_PROGRESS)
+  score         Float?               @default(0)
+  total_correct Int?                 @default(0)
+  total_wrong   Int?                 @default(0)
+  created_at    DateTime?            @default(now())
+
+  exams           exams             @relation(fields: [exam_id], references: [id], onDelete: Cascade)
+  users           users             @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  student_answers student_answers[]
+}
+
+model exam_questions {
+  exam_id     String
+  question_id String
+  order_index Int
+  score       Float? @default(1)
+
+  exams     exams     @relation(fields: [exam_id], references: [id], onDelete: Cascade)
+  questions questions @relation(fields: [question_id], references: [id], onDelete: Cascade)
+
+  @@id([exam_id, question_id])
+}
+
+model exams {
+  id                       String            @id @default(uuid())
+  title                    String
+  slug                     String            @unique
+  description              String?
+  duration                 Int
+  total_score              Float?            @default(10)
+  status                   exam_status_enum? @default(DRAFT)
+  is_public                Boolean?          @default(true)
+  access_code              String?
+  start_time               DateTime?
+  end_time                 DateTime?
+  shuffle_questions        Boolean?          @default(false)
+  shuffle_answers          Boolean?          @default(false)
+  show_result_after_submit Boolean?          @default(true)
+  max_attempts             Int?              @default(1)
+  subject_id               String
+  created_by_id            String
+  created_at               DateTime?         @default(now())
+  updated_at               DateTime?         @updatedAt
+
+  attempts       attempts[]
+  exam_questions exam_questions[]
+  exam_classes   exam_classes[]
+
+  users    users    @relation(fields: [created_by_id], references: [id])
+  subjects subjects @relation(fields: [subject_id], references: [id])
+}
+
+model exam_classes {
+  exam_id    String
+  class_id   String
+  created_at DateTime? @default(now())
+
+  exams   exams   @relation(fields: [exam_id], references: [id], onDelete: Cascade)
+  classes classes @relation(fields: [class_id], references: [id], onDelete: Cascade)
+
+  @@id([exam_id, class_id])
+  @@index([class_id])
+}
+
+model questions {
+  id            String              @id @default(uuid())
+  content       String
+  explanation   String?
+  image_url     String?
+  level         Int?                @default(1)
+  type          question_type_enum? @default(SINGLE_CHOICE)
+  subject_id    String
+  created_by_id String
+  created_at    DateTime?           @default(now())
+  updated_at    DateTime?           @updatedAt
+
+  answers         answers[]
+  exam_questions  exam_questions[]
+  student_answers student_answers[]
+
+  users    users    @relation(fields: [created_by_id], references: [id])
+  subjects subjects @relation(fields: [subject_id], references: [id])
+}
+
+model student_answers {
+  id          String    @id @default(uuid())
+  attempt_id  String
+  question_id String
+  answer_id   String
+  created_at  DateTime? @default(now())
+
+  answers   answers   @relation(fields: [answer_id], references: [id], onDelete: Cascade)
+  attempts  attempts  @relation(fields: [attempt_id], references: [id], onDelete: Cascade)
+  questions questions @relation(fields: [question_id], references: [id], onDelete: Cascade)
+}
+
+model subjects {
+  id          String    @id @default(uuid())
+  name        String
+  slug        String    @unique
+  description String?
+  created_at  DateTime? @default(now())
+
+  exams     exams[]
+  questions questions[]
+}
+
+model classes {
+  id          String    @id @default(uuid())
+  name        String
+  code        String?
+  description String?
+  school_year String?
+  teacher_id  String
+  created_at  DateTime? @default(now())
+  updated_at  DateTime? @updatedAt
+
+  teacher        users            @relation("TeacherClasses", fields: [teacher_id], references: [id], onDelete: Cascade)
+  class_students class_students[]
+  exam_classes   exam_classes[]
+
+  @@unique([teacher_id, code])
+  @@index([teacher_id])
+}
+
+model class_students {
+  class_id   String
+  student_id String
+  joined_at  DateTime? @default(now())
+
+  classes classes @relation(fields: [class_id], references: [id], onDelete: Cascade)
+  users   users   @relation("StudentClasses", fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@id([class_id, student_id])
+  @@index([student_id])
+}
+
+model users {
+  id             String    @id @default(uuid())
+  full_name      String
+  email          String    @unique
+  phone          String?   @unique
+  password       String
+  avatar         String?
+  role           role_enum @default(STUDENT)
+  is_active      Boolean?  @default(true)
+  email_verified Boolean   @default(false)
+  created_at     DateTime? @default(now())
+  updated_at     DateTime? @updatedAt
+
+  attempts          attempts[]
+  exams             exams[]
+  questions         questions[]
+  refresh_tokens    refresh_tokens[]
+  classes_teaching  classes[]        @relation("TeacherClasses")
+  class_memberships class_students[] @relation("StudentClasses")
+}
+
+model refresh_tokens {
+  id         String    @id @default(uuid())
+  user_id    String
+  token_hash String    @unique
+  expires_at DateTime
+  revoked_at DateTime?
+  created_at DateTime? @default(now())
+
+  users users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+}
+
+model email_otps {
+  id         String    @id @default(uuid())
+  email      String
+  otp        String
+  expired_at DateTime
+  is_used    Boolean?  @default(false)
+  created_at DateTime? @default(now())
+}
+
+enum attempt_status_enum {
+  IN_PROGRESS
+  SUBMITTED
+  TIMEOUT
+}
+
+enum exam_status_enum {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  ARCHIVED
+}
+
+enum question_type_enum {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+}
+
+enum role_enum {
+  ADMIN
+  TEACHER
+  STUDENT
+}

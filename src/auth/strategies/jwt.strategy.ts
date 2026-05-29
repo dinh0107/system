@@ -24,7 +24,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: AccessTokenPayload): Promise<AuthUser> {
     const user = await this.usersService.findByEmail(payload.email);
 
-    if (!user || user.is_active === false) {
+    if (!user || user.is_active === false || !user.email_verified) {
       throw new UnauthorizedException('Phiên đăng nhập không hợp lệ');
     }
 
