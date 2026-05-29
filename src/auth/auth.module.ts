@@ -24,7 +24,7 @@ import { ACCESS_TOKEN_EXPIRES_IN } from './auth.tokens';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, JwtAuthGuard],
   exports: [AuthService, JwtModule, JwtAuthGuard],
 })
 export class AuthModule {}
