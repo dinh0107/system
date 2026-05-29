@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -19,6 +19,8 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -96,5 +98,33 @@ export class AuthController {
   @ApiUnauthorizedResponse({ description: 'Chưa đăng nhập hoặc token hết hạn' })
   me(@CurrentUser() user: AuthUser) {
     return this.authService.getMe(user);
+  }
+
+  @Patch('profile')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Cập nhật thông tin tài khoản (họ tên, SĐT, avatar)' })
+  @ApiOkResponse({ description: 'Cập nhật thành công' })
+  @ApiBadRequestResponse({ description: 'Dữ liệu không hợp lệ / SĐT trùng' })
+  @ApiUnauthorizedResponse({ description: 'Chưa đăng nhập' })
+  updateProfile(
+    @CurrentUser() user: AuthUser,
+    @Body() body: UpdateProfileDto,
+  ) {
+    return this.authService.updateProfile(user, body);
+  }
+
+  @Patch('change-password')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Đổi mật khẩu' })
+  @ApiOkResponse({ description: 'Đổi mật khẩu thành công' })
+  @ApiBadRequestResponse({ description: 'Mật khẩu hiện tại sai' })
+  @ApiUnauthorizedResponse({ description: 'Chưa đăng nhập' })
+  changePassword(
+    @CurrentUser() user: AuthUser,
+    @Body() body: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(user, body);
   }
 }

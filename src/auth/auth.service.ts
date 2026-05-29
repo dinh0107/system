@@ -21,6 +21,10 @@ import { LoginDto } from './dto/login.dto';
 
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 
+import { UpdateProfileDto } from './dto/update-profile.dto';
+
+import { ChangePasswordDto } from './dto/change-password.dto';
+
 import { MailService } from '../mail/mail.service';
 
 import { AuthUser } from './strategies/jwt.strategy';
@@ -190,6 +194,70 @@ export class AuthService {
       isAuthenticated: true,
       user: userWithoutPassword,
     };
+  }
+
+  async updateProfile(authUser: AuthUser, data: UpdateProfileDto) {
+    const hasUpdate =
+      data.full_name !== undefined ||
+      data.phone !== undefined ||
+      data.avatar !== undefined;
+
+    if (!hasUpdate) {
+      throw new BadRequestException('Cần ít nhất một trường để cập nhật');
+    }
+
+    if (data.phone !== undefined && data.phone !== null) {
+      const phone = data.phone.trim();
+      if (phone) {
+        const phoneOwner = await this.usersService.findByPhone(phone);
+        if (phoneOwner && phoneOwner.id !== authUser.id) {
+          throw new BadRequestException('Số điện thoại đã được sử dụng');
+        }
+      }
+    }
+
+    const user = await this.usersService.update(authUser.id, {
+      ...(data.full_name !== undefined && {
+        full_name: data.full_name.trim(),
+      }),
+      ...(data.phone !== undefined && {
+        phone: data.phone.trim() || null,
+      }),
+      ...(data.avatar !== undefined && {
+        avatar: data.avatar.trim() || null,
+      }),
+    });
+
+    const { password: _, ...userWithoutPassword } = user;
+    return {
+      message: 'Cập nhật thông tin thành công',
+      user: userWithoutPassword,
+    };
+  }
+
+  async changePassword(authUser: AuthUser, data: ChangePasswordDto) {
+    const user = await this.usersService.findById(authUser.id);
+
+    if (!user || user.is_active === false) {
+      throw new UnauthorizedException('Phiên đăng nhập không hợp lệ');
+    }
+
+    const isMatch = await bcrypt.compare(
+      data.current_password.trim(),
+      user.password,
+    );
+
+    if (!isMatch) {
+      throw new BadRequestException('Mật khẩu hiện tại không đúng');
+    }
+
+    const hashedPassword = await bcrypt.hash(data.new_password.trim(), 10);
+
+    await this.usersService.update(authUser.id, {
+      password: hashedPassword,
+    });
+
+    return { message: 'Đổi mật khẩu thành công' };
   }
 
   async logout(body: RefreshTokenDto) {

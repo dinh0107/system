@@ -35,4 +35,14 @@ export class UsersService {
       data,
     });
   }
+
+  update(id: string, data: Prisma.usersUpdateInput) {
+    return this.prisma.users.update({
+      where: { id },
+      data: {
+        ...data,
+        updated_at: new Date(),
+      },
+    });
+  }
 }
