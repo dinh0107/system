@@ -53,7 +53,7 @@ export class AuthService {
     const hasValidOtp = await this.hasValidPendingOtp(data.email);
     if (hasValidOtp) {
       throw new BadRequestException(
-        'OTP is still valid. Check your email or wait until it expires',
+        'OTP vẫn còn hiệu lực. Vui lòng kiểm tra email hoặc đợi hết hạn',
       );
     }
 
@@ -64,7 +64,7 @@ export class AuthService {
     const { email, otp, temp_user: tempUser } = body;
 
     if (tempUser.email !== email) {
-      throw new BadRequestException('Email does not match temp_user');
+      throw new BadRequestException('Email không khớp với temp_user');
     }
 
     await this.assertRegistrationAvailable(email, tempUser.phone);
@@ -83,15 +83,15 @@ export class AuthService {
     if (!otpRecord) {
       if (await this.hasExpiredUnusedOtp(email)) {
         throw new BadRequestException(
-          'OTP expired. Please request a new OTP via POST /auth/resend-otp',
+          'OTP đã hết hạn. Vui lòng gửi lại OTP qua POST /auth/resend-otp',
         );
       }
-      throw new BadRequestException('Invalid OTP');
+      throw new BadRequestException('Mã OTP không đúng');
     }
 
     if (new Date() > otpRecord.expired_at) {
       throw new BadRequestException(
-        'OTP expired. Please request a new OTP via POST /auth/resend-otp',
+        'OTP đã hết hạn. Vui lòng gửi lại OTP qua POST /auth/resend-otp',
       );
     }
 
@@ -117,30 +117,31 @@ export class AuthService {
   }
 
   async login(data: LoginDto) {
-    const user = await this.usersService.findByEmail(data.email);
+    const email = data.email.trim().toLowerCase();
+    const user = await this.usersService.findByEmail(email);
 
     if (!user) {
-      if (await this.hasValidPendingOtp(data.email)) {
+      if (await this.hasValidPendingOtp(email)) {
         throw new BadRequestException(
-          'Please verify OTP before logging in',
+          'Vui lòng xác minh OTP trước khi đăng nhập',
         );
       }
-      if (await this.hasExpiredUnusedOtp(data.email)) {
+      if (await this.hasExpiredUnusedOtp(email)) {
         throw new BadRequestException(
-          'OTP expired. Please request a new OTP via POST /auth/resend-otp',
+          'OTP đã hết hạn. Vui lòng gửi lại OTP qua POST /auth/resend-otp',
         );
       }
-      throw new BadRequestException('Invalid credentials');
+      throw new BadRequestException('Email chưa được đăng ký');
+    }
+
+    const isMatch = await bcrypt.compare(data.password.trim(), user.password);
+
+    if (!isMatch) {
+      throw new BadRequestException('Mật khẩu không đúng');
     }
 
     if (user.is_active === false) {
-      throw new ForbiddenException('Account is locked');
-    }
-
-    const isMatch = await bcrypt.compare(data.password, user.password);
-
-    if (!isMatch) {
-      throw new BadRequestException('Invalid credentials');
+      throw new ForbiddenException('Tài khoản đã bị khóa');
     }
 
     const tokens = await this.issueTokenPair(user.id);
@@ -155,12 +156,14 @@ export class AuthService {
   async refresh(body: RefreshTokenDto) {
     const stored = await this.findValidRefreshToken(body.refresh_token);
     if (!stored) {
-      throw new UnauthorizedException('Invalid or expired refresh token');
+      throw new UnauthorizedException(
+        'Refresh token không hợp lệ hoặc đã hết hạn',
+      );
     }
 
     const user = stored.users;
     if (user.is_active === false) {
-      throw new ForbiddenException('Account is locked');
+      throw new ForbiddenException('Tài khoản đã bị khóa');
     }
 
     await this.revokeRefreshToken(stored.id);
@@ -178,7 +181,7 @@ export class AuthService {
     if (stored) {
       await this.revokeRefreshToken(stored.id);
     }
-    return { message: 'Logged out successfully' };
+    return { message: 'Đăng xuất thành công' };
   }
 
   private async issueTokenPair(userId: string) {
@@ -226,42 +229,49 @@ export class AuthService {
   private async assertRegistrationAvailable(email: string, phone?: string) {
     const userExist = await this.usersService.findByEmail(email);
     if (userExist) {
-      throw new BadRequestException('Email already exists');
+      throw new BadRequestException('Email đã được sử dụng');
     }
 
     if (phone) {
       const phoneExist = await this.usersService.findByPhone(phone);
       if (phoneExist) {
-        throw new BadRequestException('Phone number already exists');
+        throw new BadRequestException('Số điện thoại đã được sử dụng');
       }
     }
   }
 
   private async issueRegistrationOtp(data: RegisterDto) {
+    const email = data.email?.trim().toLowerCase();
+    const password = data.password?.trim();
+
+    if (!password) {
+      throw new BadRequestException('Mật khẩu không được để trống');
+    }
+
     await this.prisma.email_otps.updateMany({
-      where: { email: data.email, is_used: false },
+      where: { email, is_used: false },
       data: { is_used: true },
     });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const hashedPassword = await bcrypt.hash(data.password, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     await this.prisma.email_otps.create({
       data: {
-        email: data.email,
+        email,
         otp,
         expired_at: new Date(Date.now() + OTP_TTL_MS),
       },
     });
 
-    await this.mailService.sendOtp(data.email, otp);
+    await this.mailService.sendOtp(email, otp);
 
     return {
       message: 'OTP sent to email',
       temp_user: {
-        full_name: data.full_name,
-        email: data.email,
-        phone: data.phone,
+        full_name: data.full_name.trim(),
+        email,
+        phone: data.phone?.trim(),
         password: hashedPassword,
         role: data.role || 'STUDENT',
       },

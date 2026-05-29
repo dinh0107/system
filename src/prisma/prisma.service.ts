@@ -2,6 +2,19 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client';
 
+function normalizeDatabaseUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const sslmode = parsed.searchParams.get('sslmode');
+    if (sslmode === 'require') {
+      parsed.searchParams.set('sslmode', 'verify-full');
+    }
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
 @Injectable()
 export class PrismaService
   extends PrismaClient
@@ -14,7 +27,9 @@ export class PrismaService
     }
 
     super({
-      adapter: new PrismaPg({ connectionString }),
+      adapter: new PrismaPg({
+        connectionString: normalizeDatabaseUrl(connectionString),
+      }),
     });
   }
 

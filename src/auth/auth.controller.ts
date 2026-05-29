@@ -58,9 +58,10 @@ export class AuthController {
       'access_token (ngắn hạn), refresh_token (dài hạn), expires_in (giây)',
   })
   @ApiBadRequestResponse({
-    description: 'Sai thông tin / chưa verify OTP / OTP hết hạn',
+    description:
+      'Email chưa đăng ký / chưa verify OTP / OTP hết hạn / mật khẩu sai',
   })
-  @ApiForbiddenResponse({ description: 'Tài khoản bị khóa' })
+  @ApiForbiddenResponse({ description: 'Tài khoản đã bị khóa' })
   login(@Body() body: LoginDto) {
     return this.authService.login(body);
   }
