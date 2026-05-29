@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
 
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../generated/prisma/client';
 
 @Injectable()
 export class UsersService {
@@ -12,6 +12,14 @@ export class UsersService {
     return this.prisma.users.findUnique({
       where: {
         email,
+      },
+    });
+  }
+
+  findByPhone(phone: string) {
+    return this.prisma.users.findUnique({
+      where: {
+        phone,
       },
     });
   }

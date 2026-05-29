@@ -1,5 +1,7 @@
 generator client {
-  provider = "prisma-client-js"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
 }
 
 datasource db {
@@ -109,18 +111,32 @@ model subjects {
 }
 
 model users {
-  id         String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  full_name  String      @db.VarChar(255)
-  email      String      @unique @db.VarChar(255)
-  password   String      @db.VarChar(255)
-  avatar     String?
-  role       role_enum   @default(STUDENT)
-  is_active  Boolean?    @default(true)
-  created_at DateTime?   @default(now()) @db.Timestamp(6)
-  updated_at DateTime?   @default(now()) @db.Timestamp(6)
-  attempts   attempts[]
-  exams      exams[]
-  questions  questions[]
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  full_name      String           @db.VarChar(255)
+  email          String           @unique @db.VarChar(255)
+  phone          String?          @unique @db.VarChar(20)
+  password       String           @db.VarChar(255)
+  avatar         String?
+  role           role_enum        @default(STUDENT)
+  is_active      Boolean?         @default(true)
+  created_at     DateTime?        @default(now()) @db.Timestamp(6)
+  updated_at     DateTime?        @default(now()) @db.Timestamp(6)
+  attempts       attempts[]
+  exams          exams[]
+  questions      questions[]
+  refresh_tokens refresh_tokens[]
+}
+
+model refresh_tokens {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String    @db.Uuid
+  token_hash String    @unique @db.VarChar(255)
+  expires_at DateTime  @db.Timestamp(6)
+  revoked_at DateTime? @db.Timestamp(6)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([user_id])
 }
 
 model email_otps {
