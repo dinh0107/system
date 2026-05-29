@@ -1,6 +1,7 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
+  ApiBearerAuth,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiOkResponse,
@@ -10,6 +11,9 @@ import {
 } from '@nestjs/swagger';
 
 import { AuthService } from './auth.service';
+import { CurrentUser } from './decorators/current-user.decorator';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { AuthUser } from './strategies/jwt.strategy';
 
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -82,5 +86,15 @@ export class AuthController {
   @ApiOkResponse({ description: 'Đăng xuất thành công' })
   logout(@Body() body: RefreshTokenDto) {
     return this.authService.logout(body);
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Kiểm tra đã đăng nhập — lấy thông tin user hiện tại' })
+  @ApiOkResponse({ description: 'Đã đăng nhập' })
+  @ApiUnauthorizedResponse({ description: 'Chưa đăng nhập hoặc token hết hạn' })
+  me(@CurrentUser() user: AuthUser) {
+    return this.authService.getMe(user);
   }
 }

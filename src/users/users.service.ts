@@ -8,6 +8,12 @@ import { Prisma } from '../generated/prisma/client';
 export class UsersService {
   constructor(private prisma: PrismaService) {}
 
+  findById(id: string) {
+    return this.prisma.users.findUnique({
+      where: { id },
+    });
+  }
+
   findByEmail(email: string) {
     return this.prisma.users.findUnique({
       where: {

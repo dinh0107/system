@@ -23,6 +23,8 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 
 import { MailService } from '../mail/mail.service';
 
+import { AuthUser } from './strategies/jwt.strategy';
+
 import {
   REFRESH_TOKEN_TTL_MS,
   accessTokenExpiresInSeconds,
@@ -172,6 +174,20 @@ export class AuthService {
     const { password: _, ...userWithoutPassword } = user;
     return {
       ...tokens,
+      user: userWithoutPassword,
+    };
+  }
+
+  async getMe(authUser: AuthUser) {
+    const user = await this.usersService.findById(authUser.id);
+
+    if (!user || user.is_active === false) {
+      throw new UnauthorizedException('Phiên đăng nhập không hợp lệ');
+    }
+
+    const { password: _, ...userWithoutPassword } = user;
+    return {
+      isAuthenticated: true,
       user: userWithoutPassword,
     };
   }
