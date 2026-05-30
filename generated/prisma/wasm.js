@@ -377,7 +377,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "/Users/dinh0107/system/generated/prisma",
+      "value": "C:\\Users\\nguye\\Desktop\\BE\\system\\generated\\prisma",
       "fromEnvVar": null
     },
     "config": {
@@ -387,12 +387,12 @@ const config = {
     "binaryTargets": [
       {
         "fromEnvVar": null,
-        "value": "darwin-arm64",
+        "value": "windows",
         "native": true
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "/Users/dinh0107/system/prisma/schema.prisma",
+    "sourceFilePath": "C:\\Users\\nguye\\Desktop\\BE\\system\\prisma\\schema.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {
