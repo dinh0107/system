@@ -27,6 +27,7 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 
 import { MailService } from '../mail/mail.service';
+import { ImgbbService } from '../upload/imgbb.service';
 
 import { AuthUser } from './strategies/jwt.strategy';
 
@@ -47,6 +48,7 @@ export class AuthService {
     private usersService: UsersService,
     private jwtService: JwtService,
     private mailService: MailService,
+    private imgbbService: ImgbbService,
   ) {}
 
   async register(data: RegisterDto) {
@@ -195,14 +197,28 @@ export class AuthService {
     };
   }
 
-  async updateProfile(authUser: AuthUser, data: UpdateProfileDto) {
+  async updateProfile(
+    authUser: AuthUser,
+    data: UpdateProfileDto,
+    file?: Express.Multer.File,
+  ) {
+    let avatar = data.avatar;
+
+    if (file) {
+      const uploaded = await this.imgbbService.uploadImage(file);
+      avatar = uploaded.url;
+    }
+
     const hasUpdate =
-      data.full_name !== undefined ||
-      data.phone !== undefined ||
+      file !== undefined ||
+      (data.full_name !== undefined && data.full_name.trim() !== '') ||
+      (data.phone !== undefined && data.phone.trim() !== '') ||
       data.avatar !== undefined;
 
     if (!hasUpdate) {
-      throw new BadRequestException('Cần ít nhất một trường để cập nhật');
+      throw new BadRequestException(
+        'Cần gửi ít nhất một trường: full_name, phone, avatar (URL) hoặc file ảnh (field file/avatar/image)',
+      );
     }
 
     if (data.phone !== undefined && data.phone !== null) {
@@ -222,14 +238,15 @@ export class AuthService {
       ...(data.phone !== undefined && {
         phone: data.phone.trim() || null,
       }),
-      ...(data.avatar !== undefined && {
-        avatar: data.avatar.trim() || null,
+      ...(avatar !== undefined && {
+        avatar: avatar.trim() || null,
       }),
     });
 
     const { password: _, ...userWithoutPassword } = user;
     return {
       message: 'Cập nhật thông tin thành công',
+      isAuthenticated: true,
       user: userWithoutPassword,
     };
   }

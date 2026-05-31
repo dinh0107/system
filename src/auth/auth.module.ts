@@ -10,12 +10,14 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 
 import { UsersModule } from '../users/users.module';
 import { MailModule } from '../mail/mail.module';
+import { ImgbbModule } from '../upload/imgbb.module';
 import { ACCESS_TOKEN_EXPIRES_IN } from './auth.tokens';
 
 @Module({
   imports: [
     UsersModule,
     MailModule,
+    ImgbbModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
       secret: process.env.JWT_SECRET ?? 'dev-secret',

@@ -1,11 +1,26 @@
-import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Patch,
+  Post,
+  UploadedFiles,
+  UseGuards,
+  UseInterceptors,
+  UsePipes,
+  ValidationPipe,
+} from '@nestjs/common';
+import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiServiceUnavailableResponse,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
@@ -14,6 +29,11 @@ import { AuthService } from './auth.service';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthUser } from './strategies/jwt.strategy';
+import {
+  pickAnyUploadFile,
+  validateOptionalImageFile,
+} from '../upload/upload.validation';
+import { validationExceptionFactory } from '../common/validation.util';
 
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -107,17 +127,65 @@ export class AuthController {
   }
 
   @Patch('profile')
+  @Post('profile')
   @UseGuards(JwtAuthGuard)
+  @UseInterceptors(
+    AnyFilesInterceptor({
+      limits: {
+        fileSize:
+          Number(process.env.UPLOAD_MAX_SIZE_MB ?? 5) * 1024 * 1024,
+        files: 1,
+      },
+    }),
+  )
+  @UsePipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: false,
+      transform: true,
+      exceptionFactory: validationExceptionFactory,
+    }),
+  )
   @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Cập nhật thông tin tài khoản (họ tên, SĐT, avatar)' })
+  @ApiConsumes('multipart/form-data', 'application/json')
+  @ApiOperation({
+    summary: 'Cập nhật thông tin tài khoản (họ tên, SĐT, avatar)',
+    description:
+      'Form-data: full_name/fullName, phone, file (ảnh). Hỗ trợ PATCH hoặc POST. Không set Content-Type thủ công khi gửi FormData.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        full_name: { type: 'string', example: 'Dương Văn Định' },
+        fullName: { type: 'string', example: 'Dương Văn Định' },
+        phone: { type: 'string', example: '0912345678' },
+        avatar: {
+          type: 'string',
+          description: 'URL avatar (text). Để trống = xóa avatar',
+        },
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Ảnh avatar — tên field tuỳ ý (file, avatar, image, photo...)',
+        },
+      },
+    },
+  })
   @ApiOkResponse({ description: 'Cập nhật thành công' })
-  @ApiBadRequestResponse({ description: 'Dữ liệu không hợp lệ / SĐT trùng' })
+  @ApiBadRequestResponse({
+    description: 'Dữ liệu không hợp lệ / SĐT trùng / chưa cấu hình IMGBB_API_KEY',
+  })
+  @ApiServiceUnavailableResponse({ description: 'ImgBB không phản hồi' })
   @ApiUnauthorizedResponse({ description: 'Chưa đăng nhập' })
   updateProfile(
     @CurrentUser() user: AuthUser,
     @Body() body: UpdateProfileDto,
+    @UploadedFiles() files?: Express.Multer.File[],
   ) {
-    return this.authService.updateProfile(user, body);
+    const file = pickAnyUploadFile(files);
+    validateOptionalImageFile(file);
+    return this.authService.updateProfile(user, body, file);
   }
 
   @Patch('change-password')
