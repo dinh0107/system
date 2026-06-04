@@ -1,11 +1,13 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -34,6 +36,7 @@ import { CreateClassDto } from './dto/create-class.dto';
 import { ListClassAttemptsQueryDto } from './dto/list-class-attempts-query.dto';
 import { ListClassStudentsQueryDto } from './dto/list-class-students-query.dto';
 import { ListClassesQueryDto } from './dto/list-classes-query.dto';
+import { UpdateClassDto } from './dto/update-class.dto';
 
 @ApiTags('Giáo viên - Lớp học')
 @ApiBearerAuth('access-token')
@@ -66,6 +69,36 @@ export class ClassesController {
     @Query() query: ListClassesQueryDto,
   ) {
     return this.classesService.listForTeacher(user, query);
+  }
+
+  @Patch(':classId')
+  @ApiOperation({ summary: 'Cập nhật lớp học' })
+  @ApiParam({ name: 'classId', description: 'Mã lớp (UUID)' })
+  @ApiOkResponse({ description: 'Cập nhật lớp thành công' })
+  @ApiBadRequestResponse({
+    description: 'Dữ liệu không hợp lệ / mã lớp trùng',
+  })
+  @ApiNotFoundResponse({ description: 'Không tìm thấy lớp' })
+  @ApiForbiddenResponse({ description: 'Không có quyền sửa lớp' })
+  update(
+    @CurrentUser() user: AuthUser,
+    @Param('classId', ParseUUIDPipe) classId: string,
+    @Body() body: UpdateClassDto,
+  ) {
+    return this.classesService.update(user, classId, body);
+  }
+
+  @Delete(':classId')
+  @ApiOperation({ summary: 'Xóa lớp học' })
+  @ApiParam({ name: 'classId', description: 'Mã lớp (UUID)' })
+  @ApiOkResponse({ description: 'Xóa lớp thành công' })
+  @ApiNotFoundResponse({ description: 'Không tìm thấy lớp' })
+  @ApiForbiddenResponse({ description: 'Không có quyền xóa lớp' })
+  remove(
+    @CurrentUser() user: AuthUser,
+    @Param('classId', ParseUUIDPipe) classId: string,
+  ) {
+    return this.classesService.remove(user, classId);
   }
 
   @Get(':classId/attempts')

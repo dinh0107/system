@@ -12,6 +12,7 @@ import { CreateClassDto } from './dto/create-class.dto';
 import { ListClassAttemptsQueryDto } from './dto/list-class-attempts-query.dto';
 import { ListClassStudentsQueryDto } from './dto/list-class-students-query.dto';
 import { ListClassesQueryDto } from './dto/list-classes-query.dto';
+import { UpdateClassDto } from './dto/update-class.dto';
 
 @Injectable()
 export class ClassesService {
@@ -129,6 +130,90 @@ export class ClassesService {
         limit,
         total,
         total_pages: Math.ceil(total / limit) || 0,
+      },
+    };
+  }
+
+  async update(authUser: AuthUser, classId: string, data: UpdateClassDto) {
+    const classRoom = await this.findAccessibleClass(authUser, classId, 'sửa');
+
+    if (!this.hasUpdateFields(data)) {
+      throw new BadRequestException('Cần gửi ít nhất một trường để cập nhật');
+    }
+
+    let code: string | null | undefined;
+    if (data.code !== undefined) {
+      code = data.code?.trim() || null;
+
+      if (code) {
+        const existingCode = await this.prisma.classes.findFirst({
+          where: {
+            teacher_id: classRoom.teacher_id,
+            code,
+            id: { not: classId },
+          },
+        });
+
+        if (existingCode) {
+          throw new BadRequestException(
+            'Mã lớp đã tồn tại trong danh sách lớp của bạn',
+          );
+        }
+      }
+    }
+
+    try {
+      const updated = await this.prisma.classes.update({
+        where: { id: classId },
+        data: {
+          ...(data.name !== undefined && { name: data.name.trim() }),
+          ...(data.code !== undefined && { code }),
+          ...(data.description !== undefined && {
+            description: data.description?.trim() || null,
+          }),
+          ...(data.school_year !== undefined && {
+            school_year: data.school_year?.trim() || null,
+          }),
+        },
+        include: {
+          teacher: {
+            select: { id: true, full_name: true, email: true },
+          },
+          _count: {
+            select: { class_students: true },
+          },
+        },
+      });
+
+      return {
+        message: 'Cập nhật lớp học thành công',
+        data: this.mapClass(updated),
+      };
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new BadRequestException(
+          'Mã lớp đã tồn tại trong danh sách lớp của bạn',
+        );
+      }
+      throw error;
+    }
+  }
+
+  async remove(authUser: AuthUser, classId: string) {
+    const classRoom = await this.findAccessibleClass(authUser, classId, 'xóa');
+
+    await this.prisma.classes.delete({
+      where: { id: classRoom.id },
+    });
+
+    return {
+      message: 'Xóa lớp học thành công',
+      data: {
+        id: classRoom.id,
+        name: classRoom.name,
       },
     };
   }
@@ -331,7 +416,44 @@ export class ClassesService {
     return authUser.id;
   }
 
-  private async findAccessibleClass(authUser: AuthUser, classId: string) {
+  private hasUpdateFields(data: UpdateClassDto): boolean {
+    return (
+      data.name !== undefined ||
+      data.code !== undefined ||
+      data.description !== undefined ||
+      data.school_year !== undefined
+    );
+  }
+
+  private mapClass(item: {
+    id: string;
+    name: string;
+    code: string | null;
+    description: string | null;
+    school_year: string | null;
+    created_at: Date | null;
+    updated_at: Date | null;
+    teacher: { id: string; full_name: string; email: string };
+    _count: { class_students: number };
+  }) {
+    return {
+      id: item.id,
+      name: item.name,
+      code: item.code,
+      description: item.description,
+      school_year: item.school_year,
+      student_count: item._count.class_students,
+      teacher: item.teacher,
+      created_at: item.created_at,
+      updated_at: item.updated_at,
+    };
+  }
+
+  private async findAccessibleClass(
+    authUser: AuthUser,
+    classId: string,
+    action: 'xem' | 'sửa' | 'xóa' = 'xem',
+  ) {
     const classRoom = await this.prisma.classes.findUnique({
       where: { id: classId },
     });
@@ -341,7 +463,9 @@ export class ClassesService {
     }
 
     if (authUser.role !== 'ADMIN' && classRoom.teacher_id !== authUser.id) {
-      throw new ForbiddenException('Bạn không có quyền xem lớp học này');
+      const verb =
+        action === 'sửa' ? 'sửa' : action === 'xóa' ? 'xóa' : 'xem';
+      throw new ForbiddenException(`Bạn không có quyền ${verb} lớp học này`);
     }
 
     return classRoom;
