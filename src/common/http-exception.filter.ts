@@ -7,6 +7,26 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 
+function friendlyMessage(status: number, message: unknown): string | string[] {
+  const text = Array.isArray(message)
+    ? message.join(', ')
+    : typeof message === 'string'
+      ? message
+      : '';
+
+  if (
+    status === HttpStatus.BAD_REQUEST &&
+    /JSON|Unexpected token|control character|not valid JSON/i.test(text)
+  ) {
+    return (
+      'Dữ liệu JSON không hợp lệ. Nếu gửi tay qua Swagger/Postman, không xuống dòng thật trong chuỗi ' +
+      '(mô tả, câu hỏi…) — dùng form ứng dụng hoặc \\n. Nếu gửi từ web app, thử lại sau khi tải lại trang.'
+    );
+  }
+
+  return message as string | string[];
+}
+
 const ERROR_LABELS: Partial<Record<HttpStatus, string>> = {
   [HttpStatus.BAD_REQUEST]: 'Yêu cầu không hợp lệ',
   [HttpStatus.UNAUTHORIZED]: 'Chưa xác thực',
@@ -30,15 +50,17 @@ export class HttpExceptionFilter implements ExceptionFilter {
     if (typeof exceptionResponse === 'string') {
       response.status(status).json({
         statusCode: status,
-        message: exceptionResponse,
+        message: friendlyMessage(status, exceptionResponse),
         error: errorLabel,
       });
       return;
     }
 
     if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
+      const body = exceptionResponse as Record<string, unknown>;
       response.status(status).json({
-        ...exceptionResponse,
+        ...body,
+        message: friendlyMessage(status, body.message ?? exception.message),
         error: errorLabel,
       });
       return;

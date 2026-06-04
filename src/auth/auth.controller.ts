@@ -17,6 +17,7 @@ import { AuthUser } from './strategies/jwt.strategy';
 
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -58,6 +59,19 @@ export class AuthController {
   })
   resendOtp(@Body() body: RegisterDto) {
     return this.authService.resendOtp(body);
+  }
+
+  @Post('resend-verification')
+  @ApiOperation({
+    summary:
+      'Gửi lại OTP cho tài khoản chưa xác minh (email + mật khẩu đăng nhập)',
+  })
+  @ApiCreatedResponse({ description: 'OTP đã gửi hoặc mã cũ còn hiệu lực' })
+  @ApiBadRequestResponse({
+    description: 'Email/mật khẩu sai hoặc email đã xác minh',
+  })
+  resendVerification(@Body() body: ResendVerificationDto) {
+    return this.authService.resendVerificationForLogin(body);
   }
 
   @Post('login')

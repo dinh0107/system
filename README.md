@@ -1,115 +1,66 @@
+# API Hệ thống thi trực tuyến (NestJS)
 
+## Cài đặt
+
+```bash
 npm install
 ```
 
-## Database setup — Neon (recommended)
+## Database — MySQL (bắt buộc)
 
-1. Create a free database at [neon.tech](https://neon.tech) (sign up → **New Project**).
-2. In the Neon dashboard, open **Connect** and copy the **connection string** (PostgreSQL).
-3. Paste it into `.env`:
+Prisma schema dùng **`provider = "mysql"`**. `DATABASE_URL` **phải** bắt đầu bằng `mysql://` (không dùng `postgresql://` / Neon).
 
-```env
-DATABASE_URL="postgresql://...@ep-xxx.region.aws.neon.tech/neondb?sslmode=require"
-```
-
-4. Apply migrations to Neon (first time):
+### Cách 1: Docker (khuyến nghị)
 
 ```bash
+npm run db:up
 npm run db:deploy
 npm run db:generate
 ```
 
-5. Start the API:
+`.env` mặc định (khớp `docker-compose.yml`):
 
-```bash
-npm run start
+```env
+DATABASE_URL="mysql://root:matkhau0107@localhost:3306/system"
 ```
 
-6. Open Swagger UI: [http://localhost:3000/api](http://localhost:3000/api) (or your `PORT` from `.env`)
+### Cách 2: MySQL cài sẵn trên máy
 
-You do **not** need Docker or local PostgreSQL when using Neon.
+1. Tạo database: `CREATE DATABASE system CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`
+2. Sửa user/mật khẩu trong `.env`:
 
-### Other options
-
-| Option | `DATABASE_URL` |
-|--------|----------------|
-| **Neon** | Connection string from dashboard |
-| **Docker** | `npm run db:up` then `postgresql://postgres:postgres@localhost:5432/system` |
-| **Local Postgres** | Your host, port, password |
-
-Useful scripts:
-
-| Script | Description |
-|--------|-------------|
-| `npm run db:deploy` | Apply migrations to Neon / production DB |
-| `npm run db:migrate` | Create/apply migrations in dev |
-| `npm run db:push` | Sync schema without migrations |
-| `npm run db:studio` | Open Prisma Studio |
-| `npm run db:generate` | Regenerate Prisma client |
-| `npm run db:up` | Start local Postgres (Docker only) |
-
-## Compile and run the project
-
-```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+```env
+DATABASE_URL="mysql://root:YOUR_PASSWORD@localhost:3306/system"
 ```
 
-## Run tests
+3. Chạy migration:
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm run db:deploy
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## Chạy API
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm run start:dev
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+Swagger: [http://localhost:3001/api](http://localhost:3001/api) (theo `PORT` trong `.env`)
 
-## Resources
+## Scripts hữu ích
 
-Check out a few resources that may come in handy when working with NestJS:
+| Script | Mô tả |
+|--------|--------|
+| `npm run db:up` | Bật MySQL (Docker) |
+| `npm run db:down` | Tắt MySQL (Docker) |
+| `npm run db:deploy` | Áp migration lên DB |
+| `npm run db:migrate` | Tạo/áp migration (dev) |
+| `npm run db:push` | Đồng bộ schema không qua migration |
+| `npm run db:studio` | Prisma Studio |
+| `npm run db:generate` | Generate Prisma client |
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+## Lỗi thường gặp
 
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+- **`DATABASE_URL phải bắt đầu bằng mysql://`** — đang để URL PostgreSQL/Neon; đổi sang MySQL.
+- **`Can't reach database server`** — chạy `npm run db:up` hoặc bật MySQL service trên Windows.
+- **Access denied** — kiểm tra user/password trong `.env` khớp MySQL thật.

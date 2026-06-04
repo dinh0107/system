@@ -56,6 +56,47 @@ export class AuthService {
     return this.issueRegistrationOtp(email);
   }
 
+  /** Gửi lại OTP khi user đăng nhập nhưng chưa xác minh email (cần đúng mật khẩu). */
+  async resendVerificationForLogin(data: LoginDto) {
+    const email = data.email.trim().toLowerCase();
+    const user = await this.usersService.findByEmail(email);
+
+    if (!user) {
+      throw new BadRequestException('Email chưa được đăng ký');
+    }
+
+    if (user.email_verified) {
+      throw new BadRequestException('Email đã được xác minh');
+    }
+
+    const isMatch = await bcrypt.compare(
+      data.password.trim(),
+      user.password,
+    );
+
+    if (!isMatch) {
+      throw new BadRequestException('Mật khẩu không đúng');
+    }
+
+    const hasValidOtp = await this.hasValidPendingOtp(email);
+    if (hasValidOtp) {
+      return {
+        message:
+          'Mã OTP trước đó vẫn còn hiệu lực. Vui lòng kiểm tra email hoặc đợi hết hạn',
+        email,
+        user: this.userWithoutPassword(user),
+      };
+    }
+
+    await this.issueRegistrationOtp(email);
+
+    return {
+      message: 'Đã gửi mã OTP đến email của bạn',
+      email,
+      user: this.userWithoutPassword(user),
+    };
+  }
+
   async resendOtp(data: RegisterDto) {
     const email = data.email.trim().toLowerCase();
     const user = await this.usersService.findByEmail(email);
@@ -129,16 +170,16 @@ export class AuthService {
       throw new BadRequestException('Email chưa được đăng ký');
     }
 
-    if (!user.email_verified) {
-      throw new BadRequestException(
-        'Vui lòng xác minh email trước khi đăng nhập',
-      );
-    }
-
     const isMatch = await bcrypt.compare(data.password.trim(), user.password);
 
     if (!isMatch) {
       throw new BadRequestException('Mật khẩu không đúng');
+    }
+
+    if (!user.email_verified) {
+      throw new BadRequestException(
+        'Vui lòng xác minh email trước khi đăng nhập',
+      );
     }
 
     if (user.is_active === false) {
@@ -265,6 +306,11 @@ export class AuthService {
       await this.revokeRefreshToken(stored.id);
     }
     return { message: 'Đăng xuất thành công' };
+  }
+
+  private userWithoutPassword<T extends { password: string }>(user: T) {
+    const { password: _, ...rest } = user;
+    return rest;
   }
 
   private async issueTokenPair(userId: string) {

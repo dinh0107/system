@@ -765,6 +765,26 @@ export class ExamsService {
     return { startTime, endTime };
   }
 
+  async getById(authUser: AuthUser, examId: string) {
+    const exam = await this.prisma.exams.findUnique({
+      where: { id: examId },
+      include: this.examDetailInclude(),
+    });
+
+    if (!exam) {
+      throw new NotFoundException('Không tìm thấy đề thi');
+    }
+
+    if (authUser.role !== 'ADMIN' && exam.created_by_id !== authUser.id) {
+      throw new ForbiddenException('Bạn không có quyền xem đề thi này');
+    }
+
+    return {
+      message: 'Lấy chi tiết đề thi thành công',
+      data: this.mapExamDetail(exam),
+    };
+  }
+
   async listForTeacher(authUser: AuthUser, query: ListExamsQueryDto) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
@@ -817,6 +837,75 @@ export class ExamsService {
         total,
         total_pages: Math.ceil(total / limit) || 0,
       },
+    };
+  }
+
+  private examDetailInclude() {
+    return {
+      subjects: { select: { id: true, name: true, slug: true } },
+      _count: { select: { exam_questions: true } },
+      exam_classes: {
+        include: {
+          classes: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+              school_year: true,
+            },
+          },
+        },
+      },
+      exam_questions: {
+        orderBy: { order_index: 'asc' as const },
+        include: {
+          questions: {
+            select: {
+              id: true,
+              content: true,
+              explanation: true,
+              image_url: true,
+              type: true,
+              level: true,
+              answers: {
+                orderBy: { created_at: 'asc' as const },
+                select: {
+                  id: true,
+                  content: true,
+                  is_correct: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+  }
+
+  private mapExamDetail(
+    exam: Parameters<ExamsService['mapExam']>[0] & {
+      exam_questions: Array<{
+        order_index: number;
+        score: number | null;
+        questions: {
+          id: string;
+          content: string;
+          explanation: string | null;
+          image_url: string | null;
+          level: number | null;
+          type: question_type_enum | null;
+          answers: Array<{
+            id: string;
+            content: string;
+            is_correct: boolean | null;
+          }>;
+        };
+      }>;
+    },
+  ) {
+    return {
+      ...this.mapExam(exam),
+      questions: exam.exam_questions.map((row) => this.mapExamQuestionRow(row)),
     };
   }
 

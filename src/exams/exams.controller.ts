@@ -70,6 +70,20 @@ export class ExamsController {
     return this.examsService.listForTeacher(user, query);
   }
 
+  @Get(':examId')
+  @ApiOperation({ summary: 'Chi tiết đề trắc nghiệm (metadata + câu hỏi + đáp án)' })
+  @ApiParam({ name: 'examId', description: 'Mã đề thi (UUID)' })
+  @ApiOkResponse({ description: 'Chi tiết đề thi' })
+  @ApiNotFoundResponse({ description: 'Không tìm thấy đề thi' })
+  @ApiUnauthorizedResponse({ description: 'Chưa đăng nhập' })
+  @ApiForbiddenResponse({ description: 'Không có quyền xem đề' })
+  getById(
+    @CurrentUser() user: AuthUser,
+    @Param('examId', ParseUUIDPipe) examId: string,
+  ) {
+    return this.examsService.getById(user, examId);
+  }
+
   @Patch(':examId')
   @ApiOperation({
     summary: 'Cập nhật đề trắc nghiệm (metadata và/hoặc nhiều câu hỏi)',
