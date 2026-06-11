@@ -32,12 +32,13 @@ export class RegisterDto {
   password!: string;
 
   @ApiPropertyOptional({
-    enum: ['ADMIN', 'TEACHER', 'STUDENT'],
+    enum: ['STUDENT'],
     default: 'STUDENT',
+    description: 'Chỉ hỗ trợ đăng ký học sinh',
   })
   @IsOptional()
-  @IsEnum(['ADMIN', 'TEACHER', 'STUDENT'], {
-    message: 'Vai trò phải là ADMIN, TEACHER hoặc STUDENT',
+  @IsEnum(['STUDENT'], {
+    message: 'Chỉ được đăng ký tài khoản học sinh',
   })
-  role?: 'ADMIN' | 'TEACHER' | 'STUDENT';
+  role?: 'STUDENT';
 }

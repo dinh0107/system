@@ -52,6 +52,10 @@ export class AuthService {
   ) {}
 
   async register(data: RegisterDto) {
+    if (data.role && data.role !== 'STUDENT') {
+      throw new BadRequestException('Chỉ được đăng ký tài khoản học sinh');
+    }
+
     const email = data.email.trim().toLowerCase();
     await this.assertNoDuplicateAccount(email, data.phone);
     await this.createPendingUser(data);
@@ -194,6 +198,19 @@ export class AuthService {
     return {
       ...tokens,
       user: userWithoutPassword,
+    };
+  }
+
+  async loginAdmin(data: LoginDto) {
+    const result = await this.login(data);
+
+    if (result.user.role !== 'ADMIN') {
+      throw new ForbiddenException('Tài khoản không có quyền quản trị');
+    }
+
+    return {
+      message: 'Đăng nhập quản trị thành công',
+      ...result,
     };
   }
 
@@ -426,7 +443,7 @@ export class AuthService {
         email,
         phone: data.phone?.trim() || null,
         password: hashedPassword,
-        role: data.role || 'STUDENT',
+        role: 'STUDENT',
         email_verified: false,
         is_active: true,
       });
@@ -449,7 +466,7 @@ export class AuthService {
         full_name: data.full_name.trim(),
         phone: data.phone?.trim() || null,
         password: hashedPassword,
-        role: data.role || 'STUDENT',
+        role: 'STUDENT',
       });
     } catch (error) {
       throw this.toDuplicateAccountException(error);

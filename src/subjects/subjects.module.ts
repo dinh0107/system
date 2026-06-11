@@ -8,5 +8,6 @@ import { SubjectsService } from './subjects.service';
   imports: [AuthModule],
   controllers: [SubjectsController],
   providers: [SubjectsService],
+  exports: [SubjectsService],
 })
 export class SubjectsModule {}

@@ -44,17 +44,17 @@ export class QuestionsService {
         },
       });
 
-      const answers = await Promise.all(
-        data.answers.map((answer) =>
-          tx.answers.create({
-            data: {
-              content: answer.content.trim(),
-              is_correct: answer.is_correct ?? false,
-              question_id: question.id,
-            },
-          }),
-        ),
-      );
+      const answers: Awaited<ReturnType<typeof tx.answers.create>>[] = [];
+      for (const answer of data.answers) {
+        const created = await tx.answers.create({
+          data: {
+            content: answer.content.trim(),
+            is_correct: answer.is_correct ?? false,
+            question_id: question.id,
+          },
+        });
+        answers.push(created);
+      }
 
       return { question, answers };
     });

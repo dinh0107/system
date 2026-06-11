@@ -16,10 +16,17 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AssignExamQuestionsDto } from './dto/assign-exam-questions.dto';
 import { CreateExamDto } from './dto/create-exam.dto';
 import { CreateExamQuestionItemDto } from './dto/create-exam-question-item.dto';
+import { ListAdminExamsQueryDto } from './dto/list-admin-exams-query.dto';
 import { ListExamsQueryDto } from './dto/list-exams-query.dto';
 import { UpdateExamDto } from './dto/update-exam.dto';
 import { UpdateExamQuestionDto } from './dto/update-exam-question.dto';
 import { UpdateExamQuestionItemDto } from './dto/update-exam-question-item.dto';
+import {
+  applyQuestionOrder,
+  compactQuestionOrder,
+  createAnswersInOrder,
+  examQuestionsOrderBy,
+} from './exam-question-order.util';
 import {
   buildExamAccessSummary,
   validateExamAudience,
@@ -125,7 +132,7 @@ export class ExamsService {
         exam_id: examId,
         question_id: { in: questionIds },
       },
-      orderBy: { order_index: 'asc' },
+      orderBy: examQuestionsOrderBy,
     });
 
     const totalQuestions = await this.prisma.exam_questions.count({
@@ -327,61 +334,12 @@ export class ExamsService {
 
       const updated = await this.prisma.exams.findUniqueOrThrow({
         where: { id: examId },
-        include: {
-          subjects: { select: { id: true, name: true, slug: true } },
-          _count: { select: { exam_questions: true } },
-          exam_classes: {
-            include: {
-              classes: {
-                select: {
-                  id: true,
-                  name: true,
-                  code: true,
-                  school_year: true,
-                },
-              },
-            },
-          },
-        },
+        include: this.examDetailInclude(),
       });
-
-      const responseData: Record<string, unknown> = this.mapExam(updated);
-
-      if (data.questions?.length) {
-        const rows = await this.prisma.exam_questions.findMany({
-          where: {
-            exam_id: examId,
-            question_id: { in: data.questions.map((item) => item.question_id) },
-          },
-          orderBy: { order_index: 'asc' },
-          include: {
-            questions: {
-              select: {
-                id: true,
-                content: true,
-                type: true,
-                level: true,
-                explanation: true,
-                image_url: true,
-                answers: {
-                  orderBy: { created_at: 'asc' },
-                  select: {
-                    id: true,
-                    content: true,
-                    is_correct: true,
-                  },
-                },
-              },
-            },
-          },
-        });
-
-        responseData.questions = rows.map((row) => this.mapExamQuestionRow(row));
-      }
 
       return {
         message: 'Cập nhật đề thi thành công',
-        data: responseData,
+        data: this.mapExamDetail(updated),
       };
     } catch (error) {
       if (
@@ -432,17 +390,7 @@ export class ExamsService {
         },
       });
 
-      await Promise.all(
-        data.answers.map((answer) =>
-          tx.answers.create({
-            data: {
-              content: answer.content.trim(),
-              is_correct: answer.is_correct ?? false,
-              question_id: question.id,
-            },
-          }),
-        ),
-      );
+      await createAnswersInOrder(tx, question.id, data.answers);
 
       await tx.exam_questions.create({
         data: {
@@ -489,20 +437,35 @@ export class ExamsService {
     }
 
     await this.prisma.$transaction(async (tx) => {
+      const targetOrderIndex = data.order_index;
+      const patchData = { ...data };
+      delete patchData.order_index;
+
       await this.applyQuestionUpdateInTransaction(
         tx,
         examId,
         examQuestion,
         question,
-        data,
+        patchData,
       );
+
+      if (targetOrderIndex !== undefined) {
+        await this.applyQuestionOrderAfterIndexChange(
+          tx,
+          examId,
+          questionId,
+          targetOrderIndex,
+        );
+      }
     });
 
     const row = await this.fetchExamQuestionRow(examId, questionId);
+    const detail = await this.getById(authUser, examId);
 
     return {
       message: 'Cập nhật câu hỏi thành công',
       data: this.mapExamQuestionRow(row),
+      exam: detail.data,
     };
   }
 
@@ -541,6 +504,8 @@ export class ExamsService {
       if (otherUsage === 0) {
         await tx.questions.delete({ where: { id: questionId } });
       }
+
+      await compactQuestionOrder(tx, examId);
     });
 
     const remaining = await this.prisma.exam_questions.count({
@@ -626,17 +591,7 @@ export class ExamsService {
             },
           });
 
-          await Promise.all(
-            item.answers.map((answer) =>
-              tx.answers.create({
-                data: {
-                  content: answer.content.trim(),
-                  is_correct: answer.is_correct ?? false,
-                  question_id: question.id,
-                },
-              }),
-            ),
-          );
+          await createAnswersInOrder(tx, question.id, item.answers);
 
           const orderIndex = item.order_index ?? autoOrder++;
 
@@ -680,7 +635,7 @@ export class ExamsService {
             },
           },
           exam_questions: {
-            orderBy: { order_index: 'asc' },
+            orderBy: examQuestionsOrderBy,
             include: {
               questions: {
                 select: {
@@ -840,6 +795,88 @@ export class ExamsService {
     };
   }
 
+  async listForAdmin(query: ListAdminExamsQueryDto) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.examsWhereInput = {
+      ...(query.created_by_id && { created_by_id: query.created_by_id }),
+      ...(query.subject_id && { subject_id: query.subject_id }),
+      ...(query.status && { status: query.status }),
+      ...(query.search?.trim() && {
+        title: { contains: query.search.trim() },
+      }),
+    };
+
+    const [items, total] = await Promise.all([
+      this.prisma.exams.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { updated_at: 'desc' },
+        include: {
+          subjects: {
+            select: { id: true, name: true, slug: true },
+          },
+          users: {
+            select: {
+              id: true,
+              full_name: true,
+              email: true,
+              role: true,
+            },
+          },
+          exam_classes: {
+            include: {
+              classes: {
+                select: {
+                  id: true,
+                  name: true,
+                  code: true,
+                  school_year: true,
+                },
+              },
+            },
+          },
+          _count: {
+            select: { exam_questions: true },
+          },
+        },
+      }),
+      this.prisma.exams.count({ where }),
+    ]);
+
+    return {
+      data: items.map((exam) => this.mapAdminExam(exam)),
+      meta: {
+        page,
+        limit,
+        total,
+        total_pages: Math.ceil(total / limit) || 0,
+      },
+    };
+  }
+
+  async removeExam(authUser: AuthUser, examId: string) {
+    if (authUser.role !== 'ADMIN') {
+      throw new ForbiddenException('Chỉ quản trị viên mới được xóa đề thi');
+    }
+
+    const exam = await this.prisma.exams.findUnique({
+      where: { id: examId },
+      select: { id: true },
+    });
+
+    if (!exam) {
+      throw new NotFoundException('Không tìm thấy đề thi');
+    }
+
+    await this.prisma.exams.delete({ where: { id: examId } });
+
+    return { message: 'Xóa đề thi thành công' };
+  }
+
   private examDetailInclude() {
     return {
       subjects: { select: { id: true, name: true, slug: true } },
@@ -857,7 +894,7 @@ export class ExamsService {
         },
       },
       exam_questions: {
-        orderBy: { order_index: 'asc' as const },
+        orderBy: examQuestionsOrderBy,
         include: {
           questions: {
             select: {
@@ -959,6 +996,51 @@ export class ExamsService {
       access: buildExamAccessSummary(exam),
       created_at: exam.created_at,
       updated_at: exam.updated_at,
+    };
+  }
+
+  private mapAdminExam(
+    exam: {
+      id: string;
+      title: string;
+      slug: string;
+      description: string | null;
+      duration: number;
+      total_score: number | null;
+      status: string | null;
+      is_public: boolean | null;
+      access_code: string | null;
+      start_time: Date | null;
+      end_time: Date | null;
+      max_attempts: number | null;
+      shuffle_questions: boolean | null;
+      shuffle_answers: boolean | null;
+      show_result_after_submit: boolean | null;
+      created_at: Date | null;
+      updated_at: Date | null;
+      created_by_id: string;
+      subjects: { id: string; name: string; slug: string };
+      users: {
+        id: string;
+        full_name: string;
+        email: string;
+        role: string;
+      };
+      _count: { exam_questions: number };
+      exam_classes?: Array<{
+        classes: {
+          id: string;
+          name: string;
+          code: string | null;
+          school_year: string | null;
+        };
+      }>;
+    },
+  ) {
+    return {
+      ...this.mapExam(exam),
+      created_by_id: exam.created_by_id,
+      created_by: exam.users,
     };
   }
 
@@ -1190,14 +1272,18 @@ export class ExamsService {
         exam,
       );
 
+      const { order_index: _orderIndex, ...patchData } = item;
+
       await this.applyQuestionUpdateInTransaction(
         tx,
         examId,
         examQuestion,
         question,
-        item,
+        patchData,
       );
     }
+
+    await this.syncQuestionOrderAfterBatchUpdate(tx, examId, items);
   }
 
   private async applyQuestionUpdateInTransaction(
@@ -1260,31 +1346,10 @@ export class ExamsService {
 
     if (data.answers !== undefined) {
       await tx.answers.deleteMany({ where: { question_id: question.id } });
-
-      await Promise.all(
-        data.answers.map((answer) =>
-          tx.answers.create({
-            data: {
-              content: answer.content.trim(),
-              is_correct: answer.is_correct ?? false,
-              question_id: question.id,
-            },
-          }),
-        ),
-      );
-    }
-
-    const examQuestionUpdate: Prisma.exam_questionsUpdateInput = {};
-
-    if (data.order_index !== undefined) {
-      examQuestionUpdate.order_index = data.order_index;
+      await createAnswersInOrder(tx, question.id, data.answers);
     }
 
     if (data.score !== undefined) {
-      examQuestionUpdate.score = data.score;
-    }
-
-    if (Object.keys(examQuestionUpdate).length > 0) {
       await tx.exam_questions.update({
         where: {
           exam_id_question_id: {
@@ -1292,9 +1357,92 @@ export class ExamsService {
             question_id: question.id,
           },
         },
-        data: examQuestionUpdate,
+        data: { score: data.score },
       });
     }
+  }
+
+  private async applyQuestionOrderAfterIndexChange(
+    tx: Prisma.TransactionClient,
+    examId: string,
+    movedQuestionId: string,
+    targetOrderIndex: number,
+  ) {
+    const rows = await tx.exam_questions.findMany({
+      where: { exam_id: examId },
+      select: { question_id: true, order_index: true },
+    });
+
+    const sorted = [...rows].sort((a, b) => {
+      const ai =
+        a.question_id === movedQuestionId ? targetOrderIndex : a.order_index;
+      const bi =
+        b.question_id === movedQuestionId ? targetOrderIndex : b.order_index;
+
+      if (ai !== bi) {
+        return ai - bi;
+      }
+
+      return a.question_id.localeCompare(b.question_id);
+    });
+
+    await applyQuestionOrder(
+      tx,
+      examId,
+      sorted.map((row) => row.question_id),
+    );
+  }
+
+  private async syncQuestionOrderAfterBatchUpdate(
+    tx: Prisma.TransactionClient,
+    examId: string,
+    items: UpdateExamQuestionItemDto[],
+  ) {
+    const total = await tx.exam_questions.count({
+      where: { exam_id: examId },
+    });
+
+    if (items.length === total) {
+      await applyQuestionOrder(
+        tx,
+        examId,
+        items.map((item) => item.question_id),
+      );
+      return;
+    }
+
+    const hasOrderUpdate = items.some((item) => item.order_index !== undefined);
+    if (!hasOrderUpdate) {
+      return;
+    }
+
+    const overrides = new Map(
+      items
+        .filter((item) => item.order_index !== undefined)
+        .map((item) => [item.question_id, item.order_index!]),
+    );
+
+    const rows = await tx.exam_questions.findMany({
+      where: { exam_id: examId },
+      select: { question_id: true, order_index: true },
+    });
+
+    const sorted = [...rows].sort((a, b) => {
+      const ai = overrides.get(a.question_id) ?? a.order_index;
+      const bi = overrides.get(b.question_id) ?? b.order_index;
+
+      if (ai !== bi) {
+        return ai - bi;
+      }
+
+      return a.question_id.localeCompare(b.question_id);
+    });
+
+    await applyQuestionOrder(
+      tx,
+      examId,
+      sorted.map((row) => row.question_id),
+    );
   }
 
   private async fetchExamQuestionRow(examId: string, questionId: string) {
